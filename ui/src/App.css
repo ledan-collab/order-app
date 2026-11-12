@@ -256,11 +256,199 @@
   font-size: 22px;
 }
 
-.admin-placeholder {
-  margin-top: 24px;
-  padding: 24px 20px;
+.admin {
+  display: flex;
+  flex-direction: column;
+  gap: 36px;
+  margin-top: 28px;
+}
+
+.admin-section {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
   background: #fff;
-  border: 1px solid #c5c5c5;
+  border: 2px solid #8e98a8;
+}
+
+.admin-section-title {
+  margin: 0;
+  padding: 14px 20px;
+  background: #e7eef8;
+  border-bottom: 2px solid #8e98a8;
+  font-size: 18px;
+}
+
+.admin-section-body {
+  padding: 18px 20px 20px;
+}
+
+.order-section {
+  border-color: var(--blue);
+}
+
+.order-section .admin-section-title {
+  background: #dbe8fb;
+  border-bottom-color: var(--blue);
+}
+
+.stat-list,
+.stock-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.stat-list {
+  gap: 16px;
+}
+
+.stock-list {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.stat-card,
+.stock-card {
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid #d5d8de;
+}
+
+.stat-card {
+  border: 2px solid #8e98a8;
+  background: #f7f9fc;
+}
+
+.order-section .stat-card,
+.order-section .stock-card {
+  background: #fff;
+}
+
+.stat-label,
+.stat-value,
+.stock-name,
+.stock-amount,
+.empty-orders {
+  margin: 0;
+}
+
+.stat-label {
+  color: #444;
+  font-size: 14px;
+}
+
+.stat-value {
+  margin-top: 8px;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.stock-name {
+  font-size: 16px;
+}
+
+.stock-meta {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.stock-amount {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.stock-state {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.stock-state-정상 {
+  color: #0f7a3a;
+  background: #e5f6eb;
+}
+
+.stock-state-주의 {
+  color: #9a5b00;
+  background: #fff1d6;
+}
+
+.stock-state-품절 {
+  color: #b42318;
+  background: #fee4e2;
+}
+
+.stock-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.qty-button:disabled {
+  background: #c5d4ea;
+  border-color: #c5d4ea;
+  cursor: not-allowed;
+}
+
+.order-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.order-row {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr) 100px auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid #d5dbe3;
+}
+
+.order-price {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.order-action {
+  min-width: 108px;
+}
+
+.order-status {
+  color: #222;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.empty-orders {
+  color: #555;
+}
+
+@media (max-width: 800px) {
+  .stat-list,
+  .stock-list,
+  .order-row {
+    grid-template-columns: 1fr;
+  }
+
+  .order-price {
+    text-align: left;
+  }
 }
 
 @media (max-width: 800px) {

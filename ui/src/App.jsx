@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import AdminScreen from './AdminScreen.jsx'
 import { MENUS, OPTIONS } from './menus.js'
 import './App.css'
 
@@ -19,6 +20,10 @@ function App() {
     Object.fromEntries(MENUS.map((menu) => [menu.id, []])),
   )
   const [cart, setCart] = useState([])
+  const [orders, setOrders] = useState([])
+  const [stock, setStock] = useState(() =>
+    Object.fromEntries(MENUS.map((menu) => [menu.id, 10])),
+  )
 
   function toggleOption(menuId, optionId) {
     setSelectedByMenu((current) => {
@@ -80,7 +85,49 @@ function App() {
     if (cart.length === 0) {
       return
     }
+    const items = cart.map((item) => ({
+      ...item,
+      linePrice: item.unitPrice * item.quantity,
+    }))
+    const orderTotal = items.reduce((sum, item) => sum + item.linePrice, 0)
+    setOrders((current) => [
+      {
+        id: `${Date.now()}`,
+        orderedAt: new Date().toISOString(),
+        items,
+        total: orderTotal,
+        status: 'received',
+      },
+      ...current,
+    ])
     setCart([])
+  }
+
+  function changeStock(menuId, delta) {
+    setStock((current) => {
+      const next = current[menuId] + delta
+      if (next < 0) {
+        return current
+      }
+      return { ...current, [menuId]: next }
+    })
+  }
+
+  function advanceOrder(orderId) {
+    setOrders((current) =>
+      current.map((order) => {
+        if (order.id !== orderId) {
+          return order
+        }
+        if (order.status === 'received') {
+          return { ...order, status: 'making' }
+        }
+        if (order.status === 'making') {
+          return { ...order, status: 'done' }
+        }
+        return order
+      }),
+    )
   }
 
   const total = cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0)
@@ -198,9 +245,13 @@ function App() {
           </section>
         </main>
       ) : (
-        <main className="admin-placeholder">
-          <p>관리자 화면은 다음 단계에서 만듭니다.</p>
-        </main>
+        <AdminScreen
+          menus={MENUS}
+          orders={orders}
+          stock={stock}
+          onChangeStock={changeStock}
+          onAdvanceOrder={advanceOrder}
+        />
       )}
     </div>
   )
