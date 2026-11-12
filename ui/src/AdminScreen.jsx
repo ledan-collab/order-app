@@ -1,3 +1,5 @@
+import { ACTION_LABEL, formatWon, itemLabel, stockLabel } from './order.js'
+
 const STATUS_LABEL = {
   received: '주문 접수',
   making: '제조 중',
@@ -9,10 +11,6 @@ const NEXT_STATUS = {
   making: 'done',
 }
 
-function formatWon(amount) {
-  return `${amount.toLocaleString('ko-KR')}원`
-}
-
 function formatOrderTime(value) {
   const date = new Date(value)
   const hours = String(date.getHours()).padStart(2, '0')
@@ -20,35 +18,8 @@ function formatOrderTime(value) {
   return `${date.getMonth() + 1}월 ${date.getDate()}일 ${hours}:${minutes}`
 }
 
-function itemLabel(item) {
-  if (item.optionNames.length === 0) {
-    return item.name
-  }
-  return `${item.name} (${item.optionNames.join(', ')})`
-}
-
 function orderSummary(order) {
   return order.items.map((item) => `${itemLabel(item)} x ${item.quantity}`).join(', ')
-}
-
-function stockLabel(count) {
-  if (count === 0) {
-    return '품절'
-  }
-  if (count < 5) {
-    return '주의'
-  }
-  return '정상'
-}
-
-function actionLabel(status) {
-  if (status === 'received') {
-    return '제조 시작'
-  }
-  if (status === 'making') {
-    return '제조 완료'
-  }
-  return '제조 완료'
 }
 
 export default function AdminScreen({ menus, orders, stock, onChangeStock, onAdvanceOrder }) {
@@ -137,7 +108,7 @@ export default function AdminScreen({ menus, orders, stock, onChangeStock, onAdv
                     disabled={!canAdvance}
                     onClick={() => onAdvanceOrder(order.id)}
                   >
-                    {actionLabel(order.status)}
+                    {ACTION_LABEL[order.status]}
                   </button>
                 </li>
               )

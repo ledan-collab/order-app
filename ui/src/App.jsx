@@ -1,18 +1,16 @@
 import { useState } from 'react'
 import AdminScreen from './AdminScreen.jsx'
 import { MENUS, OPTIONS } from './menus.js'
+import {
+  cartQuantity,
+  createOrderId,
+  formatWon,
+  itemLabel,
+  stockAfterOrder,
+  stockCoversCart,
+  stockLabel,
+} from './order.js'
 import './App.css'
-
-function formatWon(amount) {
-  return `${amount.toLocaleString('ko-KR')}원`
-}
-
-function itemLabel(item) {
-  if (item.optionNames.length === 0) {
-    return item.name
-  }
-  return `${item.name} (${item.optionNames.join(', ')})`
-}
 
 function App() {
   const [screen, setScreen] = useState('order')
@@ -24,6 +22,7 @@ function App() {
   const [stock, setStock] = useState(() =>
     Object.fromEntries(MENUS.map((menu) => [menu.id, 10])),
   )
+  const [notice, setNotice] = useState('')
 
   function toggleOption(menuId, optionId) {
     setSelectedByMenu((current) => {
@@ -39,6 +38,9 @@ function App() {
   }
 
   function addToCart(menu) {
+    if (cartQuantity(cart, menu.id) >= stock[menu.id]) {
+      return
+    }
     const selectedIds = selectedByMenu[menu.id]
     const selectedOptions = OPTIONS.filter((option) => selectedIds.includes(option.id))
     const key = `${menu.id}:${selectedOptions.map((option) => option.id).join('+')}`
@@ -46,12 +48,16 @@ function App() {
       menu.price + selectedOptions.reduce((sum, option) => sum + option.price, 0)
 
     setCart((current) => {
+      if (cartQuantity(current, menu.id) >= stock[menu.id]) {
+        return current
+      }
       const index = current.findIndex((item) => item.key === key)
       if (index === -1) {
         return [
           ...current,
           {
             key,
+            menuId: menu.id,
             name: menu.name,
             optionNames: selectedOptions.map((option) => option.name),
             unitPrice,
@@ -64,11 +70,19 @@ function App() {
       )
     })
     setSelectedByMenu((current) => ({ ...current, [menu.id]: [] }))
+    setNotice('')
   }
 
   function changeQuantity(key, delta) {
-    setCart((current) =>
-      current.flatMap((item) => {
+    setCart((current) => {
+      const target = current.find((item) => item.key === key)
+      if (!target) {
+        return current
+      }
+      if (delta > 0 && cartQuantity(current, target.menuId) >= stock[target.menuId]) {
+        return current
+      }
+      return current.flatMap((item) => {
         if (item.key !== key) {
           return [item]
         }
@@ -77,12 +91,13 @@ function App() {
           return []
         }
         return [{ ...item, quantity }]
-      }),
-    )
+      })
+    })
+    setNotice('')
   }
 
   function placeOrder() {
-    if (cart.length === 0) {
+    if (cart.length === 0 || !stockCoversCart(stock, cart)) {
       return
     }
     const items = cart.map((item) => ({
@@ -92,7 +107,7 @@ function App() {
     const orderTotal = items.reduce((sum, item) => sum + item.linePrice, 0)
     setOrders((current) => [
       {
-        id: `${Date.now()}`,
+        id: createOrderId(),
         orderedAt: new Date().toISOString(),
         items,
         total: orderTotal,
@@ -100,7 +115,9 @@ function App() {
       },
       ...current,
     ])
+    setStock(stockAfterOrder(stock, cart))
     setCart([])
+    setNotice('주문이 접수되었습니다.')
   }
 
   function changeStock(menuId, delta) {
@@ -131,6 +148,7 @@ function App() {
   }
 
   const total = cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0)
+  const canOrder = cart.length > 0 && stockCoversCart(stock, cart)
 
   return (
     <div className="app">
@@ -161,11 +179,20 @@ function App() {
           <section className="panel menu-section" aria-label="메뉴">
             <h2 className="section-title">메뉴</h2>
             <div className="menu-list">
-            {MENUS.map((menu) => (
+            {MENUS.map((menu) => {
+              const count = stock[menu.id]
+              const label = stockLabel(count)
+              const reserved = cartQuantity(cart, menu.id)
+              const canAdd = reserved < count
+              return (
               <article key={menu.id} className="menu-card">
                 <img className="menu-image" src={menu.image} alt={menu.name} />
-                <h2 className="menu-name">{menu.name}</h2>
+                <h3 className="menu-name">{menu.name}</h3>
                 <p className="menu-price">{formatWon(menu.price)}</p>
+                <div className="menu-stock">
+                  <span className="stock-amount">{count}개</span>
+                  <span className={`stock-state stock-state-${label}`}>{label}</span>
+                </div>
                 <p className="menu-desc">{menu.description}</p>
                 <div className="options">
                   {OPTIONS.map((option) => {
@@ -185,49 +212,70 @@ function App() {
                     )
                   })}
                 </div>
-                <button type="button" className="button" onClick={() => addToCart(menu)}>
+                <button
+                  type="button"
+                  className="button"
+                  disabled={!canAdd}
+                  onClick={() => addToCart(menu)}
+                >
                   담기
                 </button>
               </article>
-            ))}
+              )
+            })}
             </div>
           </section>
+
+          {notice ? (
+            <p className="order-notice" role="status">
+              {notice}
+            </p>
+          ) : null}
 
           <section className="cart" aria-label="장바구니">
             <h2 className="cart-title">장바구니</h2>
             <div className="cart-body">
-              <ul className="cart-items">
-                {cart.map((item) => {
-                  const label = itemLabel(item)
-                  return (
-                    <li key={item.key} className="cart-item">
-                      <span className="cart-item-name">{label}</span>
-                      <div className="qty-control">
-                        <button
-                          type="button"
-                          className="qty-button"
-                          aria-label={`${label} 하나 빼기`}
-                          onClick={() => changeQuantity(item.key, -1)}
-                        >
-                          −
-                        </button>
-                        <span className="qty-value">{item.quantity}</span>
-                        <button
-                          type="button"
-                          className="qty-button"
-                          aria-label={`${label} 하나 더하기`}
-                          onClick={() => changeQuantity(item.key, 1)}
-                        >
-                          +
-                        </button>
-                      </div>
-                      <span className="cart-line-price">
-                        {formatWon(item.unitPrice * item.quantity)}
-                      </span>
-                    </li>
-                  )
-                })}
-              </ul>
+              {cart.length === 0 ? (
+                <p className="empty-cart">장바구니가 비어 있습니다.</p>
+              ) : (
+                <ul className="cart-items">
+                  {cart.map((item) => {
+                    const label = itemLabel(item)
+                    const canIncrease = cartQuantity(cart, item.menuId) < stock[item.menuId]
+                    return (
+                      <li key={item.key} className="cart-item">
+                        <span className="cart-item-name">{label}</span>
+                        <div className="qty-control">
+                          <button
+                            type="button"
+                            className="qty-button"
+                            aria-label={`${label} 하나 빼기`}
+                            onClick={() => changeQuantity(item.key, -1)}
+                          >
+                            −
+                          </button>
+                          <span className="qty-value">{item.quantity}</span>
+                          <button
+                            type="button"
+                            className="qty-button"
+                            aria-label={`${label} 하나 더하기`}
+                            disabled={!canIncrease}
+                            onClick={() => changeQuantity(item.key, 1)}
+                          >
+                            +
+                          </button>
+                        </div>
+                        <span className="cart-line-price">
+                          {formatWon(item.unitPrice * item.quantity)}
+                        </span>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+              {cart.length > 0 && !canOrder ? (
+                <p className="cart-warning">담긴 수량이 재고보다 많아 주문할 수 없습니다.</p>
+              ) : null}
             </div>
             <div className="cart-summary">
               <p className="cart-total">
@@ -236,7 +284,7 @@ function App() {
               <button
                 type="button"
                 className="button"
-                disabled={cart.length === 0}
+                disabled={!canOrder}
                 onClick={placeOrder}
               >
                 주문하기
