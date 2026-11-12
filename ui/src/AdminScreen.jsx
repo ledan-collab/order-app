@@ -1,14 +1,20 @@
-import { ACTION_LABEL, formatWon, itemLabel, stockLabel } from './order.js'
+import { formatWon, itemLabel, stockLabel } from './order.js'
 
 const STATUS_LABEL = {
-  received: '주문 접수',
-  making: '제조 중',
-  done: '제조 완료',
+  '주문 접수': '주문 접수',
+  '제조 중': '제조 중',
+  완료: '제조 완료',
 }
 
 const NEXT_STATUS = {
-  received: 'making',
-  making: 'done',
+  '주문 접수': '제조 중',
+  '제조 중': '완료',
+}
+
+const ACTION_LABEL = {
+  '주문 접수': '제조 시작',
+  '제조 중': '제조 완료',
+  완료: '제조 완료',
 }
 
 function formatOrderTime(value) {
@@ -25,9 +31,9 @@ function orderSummary(order) {
 export default function AdminScreen({ menus, orders, stock, onChangeStock, onAdvanceOrder }) {
   const counts = [
     { label: '총 주문', value: orders.length },
-    { label: '주문 접수', value: orders.filter((order) => order.status === 'received').length },
-    { label: '제조 중', value: orders.filter((order) => order.status === 'making').length },
-    { label: '제조 완료', value: orders.filter((order) => order.status === 'done').length },
+    { label: '주문 접수', value: orders.filter((order) => order.status === '주문 접수').length },
+    { label: '제조 중', value: orders.filter((order) => order.status === '제조 중').length },
+    { label: '제조 완료', value: orders.filter((order) => order.status === '완료').length },
   ]
 
   return (

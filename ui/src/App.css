@@ -207,6 +207,12 @@
   font-weight: 700;
 }
 
+.load-error {
+  margin: 16px 0 0;
+  color: #9a5b00;
+  font-weight: 700;
+}
+
 .empty-cart,
 .cart-warning {
   margin: 0;

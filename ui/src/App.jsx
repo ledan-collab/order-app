@@ -1,39 +1,68 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import AdminScreen from './AdminScreen.jsx'
-import { MENUS, OPTIONS } from './menus.js'
-import {
-  cartQuantity,
-  createOrderId,
-  formatWon,
-  itemLabel,
-  stockAfterOrder,
-  stockCoversCart,
-  stockLabel,
-} from './order.js'
+import { normalizeOrder, request } from './api.js'
+import { cartQuantity, formatWon, itemLabel, stockCoversCart, stockLabel } from './order.js'
 import './App.css'
 
 function App() {
   const [screen, setScreen] = useState('order')
-  const [selectedByMenu, setSelectedByMenu] = useState(() =>
-    Object.fromEntries(MENUS.map((menu) => [menu.id, []])),
-  )
+  const [menus, setMenus] = useState([])
+  const [selectedByMenu, setSelectedByMenu] = useState({})
   const [cart, setCart] = useState([])
   const [orders, setOrders] = useState([])
-  const [stock, setStock] = useState(() =>
-    Object.fromEntries(MENUS.map((menu) => [menu.id, 10])),
-  )
   const [notice, setNotice] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
 
-  function toggleOption(menuId, optionId) {
+  const stock = Object.fromEntries(menus.map((menu) => [menu.id, menu.stock]))
+
+  async function refresh() {
+    const [menuList, orderList] = await Promise.all([
+      request('/api/menus'),
+      request('/api/orders'),
+    ])
+    setMenus(menuList)
+    setOrders(orderList.map(normalizeOrder))
     setSelectedByMenu((current) => {
-      const selected = current[menuId]
+      const next = { ...current }
+      for (const menu of menuList) {
+        if (!next[menu.id]) {
+          next[menu.id] = []
+        }
+      }
+      return next
+    })
+  }
+
+  useEffect(() => {
+    let ignore = false
+    refresh()
+      .catch((loadError) => {
+        if (!ignore) {
+          setError(loadError.message)
+        }
+      })
+      .finally(() => {
+        if (!ignore) {
+          setLoading(false)
+        }
+      })
+    return () => {
+      ignore = true
+    }
+  }, [])
+
+  function toggleOption(menu, optionId) {
+    setSelectedByMenu((current) => {
+      const selected = current[menu.id] ?? []
       const nextIds = selected.includes(optionId)
         ? selected.filter((id) => id !== optionId)
         : [...selected, optionId]
-      const ordered = OPTIONS.filter((option) => nextIds.includes(option.id)).map(
-        (option) => option.id,
-      )
-      return { ...current, [menuId]: ordered }
+      const ordered = menu.options
+        .filter((option) => nextIds.includes(option.id))
+        .map((option) => option.id)
+      return { ...current, [menu.id]: ordered }
     })
   }
 
@@ -41,11 +70,10 @@ function App() {
     if (cartQuantity(cart, menu.id) >= stock[menu.id]) {
       return
     }
-    const selectedIds = selectedByMenu[menu.id]
-    const selectedOptions = OPTIONS.filter((option) => selectedIds.includes(option.id))
+    const selectedIds = selectedByMenu[menu.id] ?? []
+    const selectedOptions = menu.options.filter((option) => selectedIds.includes(option.id))
     const key = `${menu.id}:${selectedOptions.map((option) => option.id).join('+')}`
-    const unitPrice =
-      menu.price + selectedOptions.reduce((sum, option) => sum + option.price, 0)
+    const unitPrice = menu.price + selectedOptions.reduce((sum, option) => sum + option.price, 0)
 
     setCart((current) => {
       if (cartQuantity(current, menu.id) >= stock[menu.id]) {
@@ -58,6 +86,7 @@ function App() {
           {
             key,
             menuId: menu.id,
+            optionIds: selectedOptions.map((option) => option.id),
             name: menu.name,
             optionNames: selectedOptions.map((option) => option.name),
             unitPrice,
@@ -71,6 +100,7 @@ function App() {
     })
     setSelectedByMenu((current) => ({ ...current, [menu.id]: [] }))
     setNotice('')
+    setError('')
   }
 
   function changeQuantity(key, delta) {
@@ -94,61 +124,68 @@ function App() {
       })
     })
     setNotice('')
+    setError('')
   }
 
-  function placeOrder() {
-    if (cart.length === 0 || !stockCoversCart(stock, cart)) {
+  async function placeOrder() {
+    if (cart.length === 0 || !stockCoversCart(stock, cart) || submitting) {
       return
     }
-    const items = cart.map((item) => ({
-      ...item,
-      linePrice: item.unitPrice * item.quantity,
-    }))
-    const orderTotal = items.reduce((sum, item) => sum + item.linePrice, 0)
-    setOrders((current) => [
-      {
-        id: createOrderId(),
-        orderedAt: new Date().toISOString(),
-        items,
-        total: orderTotal,
-        status: 'received',
-      },
-      ...current,
-    ])
-    setStock(stockAfterOrder(stock, cart))
-    setCart([])
-    setNotice('주문이 접수되었습니다.')
-  }
-
-  function changeStock(menuId, delta) {
-    setStock((current) => {
-      const next = current[menuId] + delta
-      if (next < 0) {
-        return current
+    setSubmitting(true)
+    setError('')
+    try {
+      await request('/api/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+          items: cart.map((item) => ({
+            menuId: item.menuId,
+            optionIds: item.optionIds,
+            quantity: item.quantity,
+          })),
+        }),
+      })
+      setCart([])
+      setNotice('주문이 접수되었습니다.')
+      await refresh()
+    } catch (orderError) {
+      setError(orderError.message)
+      if (orderError.status === 409) {
+        await refresh().catch(() => {})
       }
-      return { ...current, [menuId]: next }
-    })
+    } finally {
+      setSubmitting(false)
+    }
   }
 
-  function advanceOrder(orderId) {
-    setOrders((current) =>
-      current.map((order) => {
-        if (order.id !== orderId) {
-          return order
-        }
-        if (order.status === 'received') {
-          return { ...order, status: 'making' }
-        }
-        if (order.status === 'making') {
-          return { ...order, status: 'done' }
-        }
-        return order
-      }),
-    )
+  async function changeStock(menuId, delta) {
+    try {
+      const menu = await request(`/api/menus/${menuId}/stock`, {
+        method: 'PATCH',
+        body: JSON.stringify({ delta }),
+      })
+      setMenus((current) => current.map((item) => (item.id === menu.id ? menu : item)))
+      setError('')
+    } catch (stockError) {
+      setError(stockError.message)
+    }
+  }
+
+  async function advanceOrder(orderId) {
+    try {
+      const order = normalizeOrder(
+        await request(`/api/orders/${orderId}`, {
+          method: 'PATCH',
+        }),
+      )
+      setOrders((current) => current.map((item) => (item.id === order.id ? order : item)))
+      setError('')
+    } catch (statusError) {
+      setError(statusError.message)
+    }
   }
 
   const total = cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0)
-  const canOrder = cart.length > 0 && stockCoversCart(stock, cart)
+  const canOrder = cart.length > 0 && stockCoversCart(stock, cart) && !submitting
 
   return (
     <div className="app">
@@ -174,56 +211,66 @@ function App() {
         </nav>
       </header>
 
+      {error ? (
+        <p className="load-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+
       {screen === 'order' ? (
         <main>
           <section className="panel menu-section" aria-label="메뉴">
             <h2 className="section-title">메뉴</h2>
-            <div className="menu-list">
-            {MENUS.map((menu) => {
-              const count = stock[menu.id]
-              const label = stockLabel(count)
-              const reserved = cartQuantity(cart, menu.id)
-              const canAdd = reserved < count
-              return (
-              <article key={menu.id} className="menu-card">
-                <img className="menu-image" src={menu.image} alt={menu.name} />
-                <h3 className="menu-name">{menu.name}</h3>
-                <p className="menu-price">{formatWon(menu.price)}</p>
-                <div className="menu-stock">
-                  <span className="stock-amount">{count}개</span>
-                  <span className={`stock-state stock-state-${label}`}>{label}</span>
-                </div>
-                <p className="menu-desc">{menu.description}</p>
-                <div className="options">
-                  {OPTIONS.map((option) => {
-                    const inputId = `${menu.id}-${option.id}`
-                    return (
-                      <label key={option.id} className="option" htmlFor={inputId}>
-                        <input
-                          id={inputId}
-                          type="checkbox"
-                          checked={selectedByMenu[menu.id].includes(option.id)}
-                          onChange={() => toggleOption(menu.id, option.id)}
-                        />
-                        <span>
-                          {option.name} (+{option.price.toLocaleString('ko-KR')}원)
-                        </span>
-                      </label>
-                    )
-                  })}
-                </div>
-                <button
-                  type="button"
-                  className="button"
-                  disabled={!canAdd}
-                  onClick={() => addToCart(menu)}
-                >
-                  담기
-                </button>
-              </article>
-              )
-            })}
-            </div>
+            {loading ? (
+              <p className="empty-cart">메뉴를 불러오는 중입니다.</p>
+            ) : (
+              <div className="menu-list">
+                {menus.map((menu) => {
+                  const count = stock[menu.id]
+                  const label = stockLabel(count)
+                  const reserved = cartQuantity(cart, menu.id)
+                  const canAdd = reserved < count
+                  return (
+                    <article key={menu.id} className="menu-card">
+                      <img className="menu-image" src={menu.image} alt={menu.name} />
+                      <h3 className="menu-name">{menu.name}</h3>
+                      <p className="menu-price">{formatWon(menu.price)}</p>
+                      <div className="menu-stock">
+                        <span className="stock-amount">{count}개</span>
+                        <span className={`stock-state stock-state-${label}`}>{label}</span>
+                      </div>
+                      <p className="menu-desc">{menu.description}</p>
+                      <div className="options">
+                        {menu.options.map((option) => {
+                          const inputId = `${menu.id}-${option.id}`
+                          return (
+                            <label key={option.id} className="option" htmlFor={inputId}>
+                              <input
+                                id={inputId}
+                                type="checkbox"
+                                checked={(selectedByMenu[menu.id] ?? []).includes(option.id)}
+                                onChange={() => toggleOption(menu, option.id)}
+                              />
+                              <span>
+                                {option.name} (+{option.price.toLocaleString('ko-KR')}원)
+                              </span>
+                            </label>
+                          )
+                        })}
+                      </div>
+                      <button
+                        type="button"
+                        className="button"
+                        disabled={!canAdd}
+                        onClick={() => addToCart(menu)}
+                      >
+                        담기
+                      </button>
+                    </article>
+                  )
+                })}
+              </div>
+            )}
           </section>
 
           {notice ? (
@@ -273,7 +320,7 @@ function App() {
                   })}
                 </ul>
               )}
-              {cart.length > 0 && !canOrder ? (
+              {cart.length > 0 && !stockCoversCart(stock, cart) ? (
                 <p className="cart-warning">담긴 수량이 재고보다 많아 주문할 수 없습니다.</p>
               ) : null}
             </div>
@@ -281,12 +328,7 @@ function App() {
               <p className="cart-total">
                 총 금액 <strong>{formatWon(total)}</strong>
               </p>
-              <button
-                type="button"
-                className="button"
-                disabled={!canOrder}
-                onClick={placeOrder}
-              >
+              <button type="button" className="button" disabled={!canOrder} onClick={placeOrder}>
                 주문하기
               </button>
             </div>
@@ -294,7 +336,7 @@ function App() {
         </main>
       ) : (
         <AdminScreen
-          menus={MENUS}
+          menus={menus}
           orders={orders}
           stock={stock}
           onChangeStock={changeStock}
