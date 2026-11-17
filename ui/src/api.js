@@ -1,4 +1,4 @@
-const apiBase = import.meta.env.VITE_API_URL=https://order-app-backend-9fls.onrender.com
+const apiBase = import.meta.env.VITE_API_BASE ?? ''
 
 export async function request(path, options = {}) {
   let response
