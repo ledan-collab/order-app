@@ -1,7 +1,9 @@
+const apiBase = import.meta.env.VITE_API_URL=https://order-app-backend-9fls.onrender.com
+
 export async function request(path, options = {}) {
   let response
   try {
-    response = await fetch(path, {
+    response = await fetch(`${apiBase}${path}`, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
