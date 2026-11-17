@@ -2,11 +2,24 @@ import pg from 'pg'
 
 const { Pool } = pg
 
-const config = {
-  host: process.env.PGHOST,
-  port: Number(process.env.PGPORT),
-  user: process.env.PGUSER,
-  password: process.env.PGPASSWORD,
+function hostName() {
+  return (process.env.PGHOST ?? '').replace(/^@/, '')
+}
+
+function poolConfig(database) {
+  const host = hostName()
+  const config = {
+    host,
+    port: Number(process.env.PGPORT),
+    user: process.env.PGUSER,
+    password: process.env.PGPASSWORD,
+    database,
+    connectionTimeoutMillis: 15000,
+  }
+  if (host.endsWith('.render.com')) {
+    config.ssl = { rejectUnauthorized: false }
+  }
+  return config
 }
 
 function databaseName() {
@@ -19,18 +32,24 @@ function databaseName() {
 
 export async function ensureDatabase() {
   const name = databaseName()
-  const admin = new Pool({ ...config, database: 'postgres' })
+  const probe = new Pool(poolConfig(name))
   try {
-    const existing = await admin.query('SELECT 1 FROM pg_database WHERE datname = $1', [name])
-    if (existing.rowCount === 0) {
-      await admin.query(`CREATE DATABASE ${name}`)
+    await probe.query('SELECT 1')
+    return
+  } catch (error) {
+    if (error.code !== '3D000') {
+      throw error
     }
+  } finally {
+    await probe.end()
+  }
+
+  const admin = new Pool(poolConfig('postgres'))
+  try {
+    await admin.query(`CREATE DATABASE ${name}`)
   } finally {
     await admin.end()
   }
 }
 
-export const pool = new Pool({
-  ...config,
-  database: process.env.PGDATABASE,
-})
+export const pool = new Pool(poolConfig(process.env.PGDATABASE))
